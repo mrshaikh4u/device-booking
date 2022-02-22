@@ -11,7 +11,6 @@ import org.apache.commons.lang3.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.StampedLock;
 import java.util.stream.Collectors;
 
@@ -24,10 +23,10 @@ public class BookingServiceImpl implements BookingService {
     private final FonoApiClient fonoApiClient;
 
     private BookingServiceImpl() {
-        currentBookings = new ConcurrentHashMap<>();
+        currentBookings = new HashMap<>();
         lock = new StampedLock();
         fonoApiClient = new FonoAPiClientImpl();
-        availableDevices = new ConcurrentHashMap<>() {{
+        availableDevices = new HashMap<>() {{
             put("Samsung Galaxy S9", 1);
             put("Samsung Galaxy S8", 2);
             put("Motorola Nexus 6", 1);
@@ -92,11 +91,8 @@ public class BookingServiceImpl implements BookingService {
 
     @Override
     public List<Device> retrieveDevices() {
-        long stamp = lock.tryOptimisticRead();
+        long stamp = lock.readLock();
         List<Device> output;
-        if (!lock.validate(stamp)) {
-            stamp = lock.readLock();
-        }
         try {
             output = availableDevices.entrySet().stream()
                     .map(device ->
@@ -107,32 +103,29 @@ public class BookingServiceImpl implements BookingService {
                                     .build()
                     ).collect(Collectors.toList());
         } finally {
-            if(lock.isReadLocked()){
                 lock.unlockRead(stamp);
-            }
         }
         return output;
     }
 
     @Override
     public List<Booking> retrieveBookings() {
-        return new ArrayList<>(currentBookings.values());
+        long stamp = lock.readLock();
+        try{
+            return new ArrayList<>(currentBookings.values());
+        }finally {
+            lock.unlockRead(stamp);
+        }
     }
 
     @Override
     public Booking retrieveBookingByID(int bookingID) {
-        long stamp = lock.tryOptimisticRead();
+        long stamp = lock.readLock();
         Optional<Booking> output;
-        if (!lock.validate(stamp)) {
-            stamp = lock.readLock();
-        }
             try {
                 output = Optional.ofNullable(currentBookings.get(bookingID));
             } finally {
-                if(lock.isReadLocked())
-                {
                     lock.unlockRead(stamp);
-                }
             }
         return output.orElseThrow(()->new BookingNotFoundException("booking with ID : "+bookingID+" not found"));
     }
