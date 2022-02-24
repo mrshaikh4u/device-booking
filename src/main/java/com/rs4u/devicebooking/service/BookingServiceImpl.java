@@ -27,7 +27,7 @@ public class BookingServiceImpl implements BookingService {
         lock = new StampedLock();
         fonoApiClient = new FonoAPiClientImpl();
         availableDevices = new HashMap<>() {{
-            put("Samsung Galaxy S9", 1);
+            put("Samsung Galaxy S9", 1000);
             put("Samsung Galaxy S8", 2);
             put("Motorola Nexus 6", 1);
             put("Oneplus 9", 1);
@@ -53,9 +53,9 @@ public class BookingServiceImpl implements BookingService {
     @Override
     public int reserveDevice(String deviceName, int count, String userName) {
         validateInput(deviceName, count, userName);
-        long stamp = lock.writeLock();
+//        long stamp = lock.writeLock();
         int bookingID;
-        try {
+//        try {
             Integer currentAvailableCnt = availableDevices.get(deviceName);
             if (currentAvailableCnt < count) {
                 throw new DeviceNotAvailableException("ERROR!! Device "+deviceName+" has only "+currentAvailableCnt+" available");
@@ -70,9 +70,9 @@ public class BookingServiceImpl implements BookingService {
             booking.setId(bookingID);
             currentBookings.put(bookingID, booking);
             availableDevices.put(deviceName, currentAvailableCnt - count);
-        } finally {
-            lock.unlockWrite(stamp);
-        }
+//        } finally {
+//            lock.unlockWrite(stamp);
+//        }
         return bookingID;
     }
 
@@ -93,7 +93,7 @@ public class BookingServiceImpl implements BookingService {
     public List<Device> retrieveDevices() {
         long stamp = lock.readLock();
         List<Device> output;
-        try {
+//        try {
             output = availableDevices.entrySet().stream()
                     .map(device ->
                             Device.builder()
@@ -102,9 +102,9 @@ public class BookingServiceImpl implements BookingService {
                                     .techSpecs(fonoApiClient.fetchTechSpecs(device.getKey()))
                                     .build()
                     ).collect(Collectors.toList());
-        } finally {
-                lock.unlockRead(stamp);
-        }
+//        } finally {
+//                lock.unlockRead(stamp);
+//        }
         return output;
     }
 

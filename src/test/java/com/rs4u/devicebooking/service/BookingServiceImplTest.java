@@ -10,8 +10,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.*;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -135,18 +134,11 @@ public class BookingServiceImplTest {
     @Test
     @DisplayName("Concurrently running 10 threads each booking different device should run smoothly")
     void test11() {
-        populateAvailableDevices();
-        int numberOfThreads = 10;
-        ExecutorService executor = Executors.newFixedThreadPool(numberOfThreads);
-        Callable<Integer> callableOperations = this::performOperations;
+        int numberOfThreads = 1000;
+        Runnable runnableOperation = this::performOperations;
         for (int i = 0; i < numberOfThreads; i++) {
-            try {
-                executor.submit(callableOperations).get();
-            } catch (DeviceNotAvailableException | InterruptedException | ExecutionException e) {
-                fail("Error thrown from concurrent execution "+e);
-            }
+            new Thread(runnableOperation).start();
         }
-        executor.shutdown();
     }
 
     @Test
@@ -166,29 +158,11 @@ public class BookingServiceImplTest {
     void test14() {
         assertThrows(InvalidParamException.class, () -> bookingService.reserveDevice("abc", 1, ""));
     }
-
-    private void populateAvailableDevices() {
-        this.availableDevices = new ConcurrentHashMap<>() {{
-            put("Samsung Galaxy S9", 1);
-            put("Samsung Galaxy S8", 2);
-            put("Motorola Nexus 6", 1);
-            put("Oneplus 9", 1);
-            put("Apple iPhone 13", 1);
-            put("Apple iPhone 12", 1);
-            put("Apple iPhone 11", 1);
-            put("iPhone X", 1);
-            put("Nokia 3310", 1);
-        }};
-    }
-
-    private int performOperations() {
-        String deviceName = this.availableDevices.keySet().stream()
-                .findAny()
-                .orElseThrow(() -> new DeviceNotAvailableException("out of devices"));
-        this.availableDevices.put(deviceName, this.availableDevices.get(deviceName) - 1);
-        if (this.availableDevices.get(deviceName) == 0)
-            this.availableDevices.remove(deviceName);
-        return bookingService.reserveDevice(deviceName, 1, "tom");
+    private void performOperations() {
+        for (int i = 0; i < 10; i++) {
+            bookingService.retrieveBookings();
+        }
+        bookingService.reserveDevice("Samsung Galaxy S9", 1, "tom");
     }
 
 
