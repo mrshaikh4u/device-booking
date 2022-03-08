@@ -11,14 +11,12 @@ import org.junit.jupiter.api.Test;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
-import java.util.concurrent.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 public class BookingServiceImplTest {
 
     private BookingService bookingService;
-    private Map<String, Integer> availableDevices;
 
     @BeforeEach
     void setUp() {

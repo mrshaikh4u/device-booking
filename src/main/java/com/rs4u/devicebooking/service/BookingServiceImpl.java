@@ -12,6 +12,7 @@ import org.apache.commons.lang3.StringUtils;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.locks.StampedLock;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public class BookingServiceImpl implements BookingService {
@@ -53,37 +54,34 @@ public class BookingServiceImpl implements BookingService {
     @Override
     public int reserveDevice(String deviceName, int count, String userName) {
         validateInput(deviceName, count, userName);
-//        long stamp = lock.writeLock();
-        int bookingID;
-//        try {
-            Integer currentAvailableCnt = availableDevices.get(deviceName);
-            if (currentAvailableCnt < count) {
-                throw new DeviceNotAvailableException("ERROR!! Device "+deviceName+" has only "+currentAvailableCnt+" available");
-            }
-            Booking booking = Booking.builder()
-                    .deviceName(deviceName)
-                    .count(count)
-                    .owner(userName)
-                    .bookingTime(LocalDateTime.now())
-                    .build();
-            bookingID = booking.hashCode();
-            booking.setId(bookingID);
-            currentBookings.put(bookingID, booking);
+        long stamp = lock.writeLock();
+        Booking booking;
+        try {
+            Integer currentAvailableCnt = availableDevices.entrySet().stream()
+                    .filter(entry -> deviceAvailable(deviceName, count, entry))
+                    .findFirst()
+                    .orElseThrow(() -> new DeviceNotAvailableException("ERROR!! Device not available")).getValue();
+            booking = prepareBookingInst(deviceName, count, userName);
+            currentBookings.put(booking.getId(), booking);
             availableDevices.put(deviceName, currentAvailableCnt - count);
-//        } finally {
-//            lock.unlockWrite(stamp);
-//        }
-        return bookingID;
+        } finally {
+            lock.unlockWrite(stamp);
+        }
+        return booking.getId();
     }
 
     @Override
     public void releaseDevice(int bookingID) {
         long stamp = lock.writeLock();
         try {
-            Optional<Booking> optionalBooking = Optional.ofNullable(currentBookings.get(bookingID));
-            Booking booking = optionalBooking.orElseThrow(()->new BookingNotFoundException("booking with ID : "+bookingID+" not found"));
-            availableDevices.put(booking.getDeviceName(), availableDevices.get(booking.getDeviceName()) + booking.getCount());
-            currentBookings.remove(bookingID);
+            Optional
+                    .ofNullable(currentBookings.get(bookingID))
+                    .ifPresentOrElse(booking -> {
+                        availableDevices.put(booking.getDeviceName(), availableDevices.get(booking.getDeviceName()) + booking.getCount());
+                        currentBookings.remove(bookingID);
+                    }, () -> {
+                        throw new BookingNotFoundException("booking with ID : " + bookingID + " not found");
+                    });
         } finally {
             lock.unlockWrite(stamp);
         }
@@ -92,28 +90,21 @@ public class BookingServiceImpl implements BookingService {
     @Override
     public List<Device> retrieveDevices() {
         long stamp = lock.readLock();
-        List<Device> output;
-//        try {
-            output = availableDevices.entrySet().stream()
-                    .map(device ->
-                            Device.builder()
-                                    .name(device.getKey())
-                                    .availableInStock(device.getValue() > 0)
-                                    .techSpecs(fonoApiClient.fetchTechSpecs(device.getKey()))
-                                    .build()
+        try {
+            return availableDevices.entrySet().stream()
+                    .map(deviceToPOJOMapper()
                     ).collect(Collectors.toList());
-//        } finally {
-//                lock.unlockRead(stamp);
-//        }
-        return output;
+        } finally {
+            lock.unlockRead(stamp);
+        }
     }
 
     @Override
     public List<Booking> retrieveBookings() {
         long stamp = lock.readLock();
-        try{
+        try {
             return new ArrayList<>(currentBookings.values());
-        }finally {
+        } finally {
             lock.unlockRead(stamp);
         }
     }
@@ -121,25 +112,48 @@ public class BookingServiceImpl implements BookingService {
     @Override
     public Booking retrieveBookingByID(int bookingID) {
         long stamp = lock.readLock();
-        Optional<Booking> output;
-            try {
-                output = Optional.ofNullable(currentBookings.get(bookingID));
-            } finally {
-                    lock.unlockRead(stamp);
-            }
-        return output.orElseThrow(()->new BookingNotFoundException("booking with ID : "+bookingID+" not found"));
+        try {
+            return Optional.ofNullable(currentBookings.get(bookingID))
+                    .orElseThrow(() -> new BookingNotFoundException("booking with ID : " + bookingID + " not found"));
+        } finally {
+            lock.unlockRead(stamp);
+        }
     }
 
     private void validateInput(String deviceName, int count, String userName) {
-        if(count < 1)
+        if (count < 1)
             throw new InvalidParamException("Requested count can't be less than 1");
-        if(StringUtils.isBlank(userName))
+        if (StringUtils.isBlank(userName))
             throw new InvalidParamException("userName is required");
-        if(StringUtils.isBlank(deviceName))
+        if (StringUtils.isBlank(deviceName))
             throw new InvalidParamException("deviceName is required");
         if (!availableDevices.containsKey(deviceName)) {
-            throw new DeviceNotAvailableException("Device "+ deviceName +" not found");
+            throw new DeviceNotAvailableException("Device " + deviceName + " not found");
         }
+    }
+
+    private boolean deviceAvailable(String deviceName, int count, Map.Entry<String, Integer> entry) {
+        return entry.getKey().equals(deviceName) && entry.getValue() >= count;
+    }
+
+    private Booking prepareBookingInst(String deviceName, int count, String userName) {
+        Booking booking = Booking.builder()
+                .deviceName(deviceName)
+                .count(count)
+                .owner(userName)
+                .bookingTime(LocalDateTime.now())
+                .build();
+        booking.setId(booking.hashCode());
+        return booking;
+    }
+
+    private Function<Map.Entry<String, Integer>, Device> deviceToPOJOMapper() {
+        return device ->
+                Device.builder()
+                        .name(device.getKey())
+                        .availableInStock(device.getValue() > 0)
+                        .techSpecs(fonoApiClient.fetchTechSpecs(device.getKey()))
+                        .build();
     }
 
 }
